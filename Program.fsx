@@ -35,7 +35,10 @@ let rand = System.Random()
 
 let mutable users = Map.empty
 let mutable logStatus = Map.empty
+let mutable tweet = Map.empty
+let mutable userTweet = Map.empty
 let mutable followers = Map.empty
+
 let id = 1
 let nodes = 10
 
@@ -59,6 +62,14 @@ let addFollowers username =
     printfn "The list of followers to be added are %A" FList
     
 
+let retweets username tweet =
+    let mutable FList = new List<string>()
+    FList <- userTweet.GetValueOrDefault username
+    FList.Add(tweet)
+    userTweet <- userTweet.Add(username, FList)
+
+
+
 let startSystem = 
                 spawn system "Handler"
                 <| fun mailbox ->
@@ -74,6 +85,9 @@ let startSystem =
                                 n <- n + 1
                             else if input.[0].CompareTo("Followers")=0 then
                                 addFollowers input.[1] |> ignore
+                            else if input.[0].CompareTo("Retweet") = 0 then
+                                let tweet_no = rand.Next() % tweet.Count
+                                retweets input.[1] tweet.[tweet_no]
                             printfn "This is the message from client %s" msg
                             printfn "This is the users map %A" users
                             printfn "This is the followers of a particular user map %A" followers
