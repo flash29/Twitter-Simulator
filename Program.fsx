@@ -38,7 +38,8 @@ let mutable logStatus = Map.empty
 let mutable tweet = Map.empty
 let mutable userTweet = Map.empty
 let mutable followers = Map.empty
-
+let mutable mentions = Map.empty
+let mutable hashTags = Map.empty
 let id = 1
 let nodes = 10
 
@@ -68,6 +69,60 @@ let retweets username tweet =
     FList.Add(tweet)
     userTweet <- userTweet.Add(username, FList)
 
+let getMentions mention =
+    let found, value =mentions.TryGetValue mention
+    value
+
+let getHashTags hashtag =
+    let found, value =hashTags.TryGetValue hashtag
+    value
+
+let registeringUsers username =
+    users <- users.Add(username,rand.Next()|>string)
+
+
+type CreaterHandler =
+    | RegisterUsers of string
+    | FollowersInit of string
+
+let CreaterHandler (mailbox: Actor<_>) =
+    let rec loop() = actor{
+        let! message = mailbox.Receive()
+        match message with 
+        | RegisterUsers (username) ->
+            registeringUsers username
+        | FollowersInit (username) ->
+            addFollowers username |> ignore
+        return! loop()
+    }
+    loop()
+
+let CreaterHandlerRef = spawn system "Creater" CreaterHandler
+
+type OperationsHandler =
+    // | Login of string
+    // | Logout of string
+    // | Tweet of string*string
+    | Retweet of string
+    | MentionRetrieve of string
+    | HashtagRetrieve of string
+
+let OperationsHandler (mailbox: Actor<_>) =
+    let rec loop() = actor{
+        let! message = mailbox.Receive()
+        match message with 
+        | Retweet (username) ->
+            let tweet_no = rand.Next() % tweet.Count
+            retweets username tweet.[tweet_no]
+        | MentionRetrieve (mention) ->
+            getMentions mention
+        | HashtagRetrieve (hashtag) ->
+            getHashTags hashtag
+        return! loop()
+    }
+    loop()
+
+let OperationsHandlerRef = spawn system "Operation" OperationsHandler
 
 
 let startSystem = 
@@ -80,14 +135,16 @@ let startSystem =
                             let response = msg|>string
                             let input = (response).Split '-'
                             if input.[0].CompareTo("Register") = 0 then
-                                users <- users.Add(input.[1],rand.Next()|>string)
+                                CreaterHandlerRef <! RegisterUsers (input.[1])
                                 logStatus <- logStatus.Add(input.[1], "LoggedIN")
-                                n <- n + 1
                             else if input.[0].CompareTo("Followers")=0 then
-                                addFollowers input.[1] |> ignore
+                                CreaterHandlerRef <! FollowersInit(input.[1])
                             else if input.[0].CompareTo("Retweet") = 0 then
-                                let tweet_no = rand.Next() % tweet.Count
-                                retweets input.[1] tweet.[tweet_no]
+                                OperationsHandlerRef <! Retweet input.[1]
+                            else if input.[0].CompareTo("GetMentions") = 0 then
+                                OperationsHandlerRef <! MentionRetrieve input.[1]
+                            else if input.[0].CompareTo("GetHashTags") = 0 then
+                                OperationsHandlerRef <! HashtagRetrieve input.[1]
                             printfn "This is the message from client %s" msg
                             printfn "This is the users map %A" users
                             printfn "This is the followers of a particular user map %A" followers
