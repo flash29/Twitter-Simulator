@@ -42,6 +42,7 @@ let mutable userTweet = Map.empty
 let mutable followers = Map.empty
 let mutable mentions = Map.empty
 let mutable hashTags = Map.empty
+let mutable subscribedTweets = Map.empty
 let id = 1
 let nodes = 10
 
@@ -83,15 +84,7 @@ let getHashTags hashtag =
 let registeringUsers username =
     users <- users.Add(username,rand.Next()|>string)
 
-let getSubscribedTweets username = 
-    // let mutable FList = []
-    // let value = followers.GetValueOrDefault username
-    // printfn "the count of value is %d" value.Count 
-    // for i in 0..(value.Count) do
-    //     let tw = userTweet.GetValueOrDefault value.[i]
-    //     FList <- FList @ tw
-    // FList
-    username
+
 
 let addMentions mentionedUser tweet =
     let found = mentions.TryFind mentionedUser
@@ -121,18 +114,31 @@ let addSpecificUserTweets username tweet =
         found.Value.Add(tweet)
 
 
-let AddTweet username tweet =
-    tweets <- tweets @ [tweet]
- //   printfn "The tweets added are %A" tweets
-    let res = tweet|>string
-    let t = (res).Split '/'
-    if t.Length = 3 then
-        addMentions t.[0] tweet |> ignore
-        addHashtag t.[2] tweet |> ignore
-    addSpecificUserTweets username tweet |> ignore
+let addToSubscribedUsers username tweet =
+    let found = followers.TryFind username
+    for i in 1..found.Value.Count do
+        let temp = subscribedTweets.TryFind (found.Value.Item(i-1))
+        let FList = new List<string>()
+        if temp = None then
+            FList.Add(tweet)
+            subscribedTweets <- subscribedTweets.Add(username, FList)
+        else
+            temp.Value.Add(tweet)
     
 
+let AddTweet username tweet =
+    tweets <- tweets @ [tweet]
+    let res = tweet|>string
+    let t = (res).Split '/'
+    if t.Length = 3 then 
+        addMentions t.[0].[1..] tweet |> ignore
+        addHashtag t.[2] tweet |> ignore
+    addSpecificUserTweets username tweet |> ignore
+  //  addToSubscribedUsers username tweet
 
+let getSubscribedTweets username = 
+   let found = subscribedTweets.TryFind username
+   found
 
 
 

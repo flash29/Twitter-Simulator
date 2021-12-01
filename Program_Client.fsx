@@ -8,6 +8,8 @@ open System.Threading
 open System
 open System.Data
 open System.Collections.Generic
+open System.Text
+open System.Diagnostics
 
 let address = "akka.tcp://TwitterServer@localhost:8777/user/Handler"
 
@@ -28,9 +30,9 @@ let Configuration = ConfigurationFactory.ParseString(
 let system = ActorSystem.Create("Client", Configuration)
 
 let server = system.ActorSelection(address)
-let nodes = 10
+let nodes = 30000
 let rand = System.Random()
-let numRequests = 10
+let numRequests = 100000
 
 type MainControl =
     | Init
@@ -66,7 +68,7 @@ let mutable Nodelist : list<IActorRef> =[]
 //     loop()
 
 // let OperationsHandler = spawn system "OperationsHand" Operations
-let hashTagsUsed = ["#Liverpool"; "#RealMadrid"; "#Barca"; "#ChampionsLeague"; "#ManchesterUnited"; "#BayernMunich"; "#Juventus"; "#ACMilan"; "Football"; "InterMilan"; "PSG"; "Aresenal"; "Tottenham"; "ManchesterCity"]
+let hashTagsUsed = ["#Liverpool"; "#RealMadrid"; "#Barca"; "#ChampionsLeague"; "#ManchesterUnited"; "#BayernMunich"; "#Juventus"; "#ACMilan"; "#Football"; "#InterMilan"; "#PSG"; "#Aresenal"; "#Tottenham"; "#ManchesterCity"]
 
 let genTweet =
     let mutable tweetGenerated = ""
@@ -131,6 +133,9 @@ let MainControl (mailbox: Actor<_>) =
                      printfn "Total Time taken for Adding Followers is %f" stopWatch.Elapsed.TotalMilliseconds
                 | TweetGen ->
                     let stopWatch = System.Diagnostics.Stopwatch.StartNew()
+                    let proc = Process.GetCurrentProcess()
+                    let cpu_time_stamp = proc.TotalProcessorTime
+
                     for i in 0..numRequests do
                         let mutable x = rand.Next()
                         x <- x % nodes
@@ -138,7 +143,7 @@ let MainControl (mailbox: Actor<_>) =
                         let mutable tempHash = rand.Next()
                         tempHash <- tempHash % hashTagsUsed.Length
                         let userMentioned = "User" + (string (rand.Next()% nodes))
-                        tweetGenerated <- userMentioned + "/This is awesome/" + hashTagsUsed.Item(tempHash)
+                        tweetGenerated <- "@"+userMentioned + "/This is awesome/" + hashTagsUsed.Item(tempHash)
                       //  printfn "from temp %s" tweetGenerated
                         Nodelist.[x] <! SendingTweets tweetGenerated
                     stopWatch.Stop()
@@ -172,10 +177,28 @@ let MainControl (mailbox: Actor<_>) =
                     stopWatch.Stop()
                     printfn "Total Time taken for Getting Subscribed tweets %f" stopWatch.Elapsed.TotalMilliseconds
 
+                    stopWatch.Stop()
+ 
+                    let cpu_time = (proc.TotalProcessorTime-cpu_time_stamp).TotalMilliseconds
+                    printfn "CPU time = %dms" (int64 cpu_time)
+                    let time_taken = cpu_time / stopWatch.Elapsed.TotalMilliseconds
+                    printfn "the total time taken for computing %f" time_taken
                         
                 return! loop()
             }
     loop()
 
+let proc = Process.GetCurrentProcess()
+let cpu_time_stamp = proc.TotalProcessorTime
+let stopWatch = System.Diagnostics.Stopwatch.StartNew()
+
+
 let MainBoss = spawn system "MainBoss" MainControl
 MainBoss <! Init
+
+stopWatch.Stop()
+printfn "Total Time taken for Registration %f" stopWatch.Elapsed.TotalMilliseconds
+let cpu_time = (proc.TotalProcessorTime-cpu_time_stamp).TotalMilliseconds
+printfn "CPU time = %dms" (int64 cpu_time)
+let time_taken = cpu_time / stopWatch.Elapsed.TotalMilliseconds
+printfn "the total time taken for computing %f" time_taken
