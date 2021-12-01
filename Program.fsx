@@ -42,6 +42,7 @@ let mutable userTweet = Map.empty
 let mutable followers = Map.empty
 let mutable mentions = Map.empty
 let mutable hashTags = Map.empty
+let mutable subscribedTweets = Map.empty
 let id = 1
 let nodes = 10
 
@@ -66,9 +67,9 @@ let addFollowers username =
     
 
 let retweets username tweet =
-    let mutable FList = new List<string>()
-    FList <- userTweet.GetValueOrDefault username
- //   FList <- FList.Add(tweet)
+  //  let mutable FList = new List<string>()
+    let mutable (FList: List<string>) = userTweet.GetValueOrDefault username
+  //  FList <- FList.Add(tweet)
     FList.Add(tweet)
     userTweet <- userTweet.Add(username, FList)
 
@@ -83,43 +84,61 @@ let getHashTags hashtag =
 let registeringUsers username =
     users <- users.Add(username,rand.Next()|>string)
 
-let getSubscribedTweets username = 
-    // let mutable FList = []
-    // let value = followers.GetValueOrDefault username
-    // printfn "the count of value is %d" value.Count 
-    // for i in 0..(value.Count) do
-    //     let tw = userTweet.GetValueOrDefault value.[i]
-    //     FList <- FList @ tw
-    // FList
-    username
+
 
 let addMentions mentionedUser tweet =
-    let mutable FList = new List<string>()
-    FList <- mentions.GetValueOrDefault mentionedUser
-    FList.Add(tweet)
-    mentions.Add(mentionedUser, FList)
+    let found = mentions.TryFind mentionedUser
+    if found = None then
+        let FList = new List<string>()
+        FList.Add(tweet)
+        mentions <- mentions.Add(mentionedUser, FList)
+    else
+        found.Value.Add(tweet)
 
 let addHashtag hashtag tweet = 
-    let mutable FList = new List<string>()
-    FList <- hashTags.GetValueOrDefault hashtag
-    FList.Add(tweet)
-    hashTags.Add(hashtag, FList)
+    let found = hashTags.TryFind hashtag
+    if found = None then
+        let FList = new List<string>()
+        FList.Add(tweet)
+        hashTags <- hashTags.Add(hashtag, FList)
+    else
+        found.Value.Add(tweet)
 
 let addSpecificUserTweets username tweet = 
-    let mutable FList = new List<string>()
-    FList <- userTweet.GetValueOrDefault username
-    FList.Add(tweet)
-    userTweet.Add(username, FList)
+    let found = userTweet.TryFind username
+    if found = None then
+        let FList = new List<string>()
+        FList.Add(tweet)
+        userTweet <- userTweet.Add(username, FList)
+    else
+        found.Value.Add(tweet)
+
+
+let addToSubscribedUsers username tweet =
+    let found = followers.TryFind username
+    for i in 1..found.Value.Count do
+        let temp = subscribedTweets.TryFind (found.Value.Item(i-1))
+        let FList = new List<string>()
+        if temp = None then
+            FList.Add(tweet)
+            subscribedTweets <- subscribedTweets.Add(username, FList)
+        else
+            temp.Value.Add(tweet)
+    
 
 let AddTweet username tweet =
-    let res = tweet|>string
-    let t = (res).Split '-'
-    addMentions t.[0] tweet |> ignore
-    addHashtag t.[2] tweet |> ignore
-    addSpecificUserTweets username tweet |> ignore
     tweets <- tweets @ [tweet]
+    let res = tweet|>string
+    let t = (res).Split '/'
+    if t.Length = 3 then 
+        addMentions t.[0].[1..] tweet |> ignore
+        addHashtag t.[2] tweet |> ignore
+    addSpecificUserTweets username tweet |> ignore
+  //  addToSubscribedUsers username tweet
 
-
+let getSubscribedTweets username = 
+   let found = subscribedTweets.TryFind username
+   found
 
 
 
@@ -188,6 +207,9 @@ let startSystem =
                                 logStatus <- logStatus.Add(input.[1], "LoggedIN")
                             else if input.[0].CompareTo("Followers")=0 then
                                 CreaterHandlerRef <! FollowersInit(input.[1])
+                            else if input.[0].CompareTo("Tweets") = 0 then
+                              //  printfn "from the inside %A" input
+                                OperationsHandlerRef <! Tweet (input.[2], input.[1])
                             else if input.[0].CompareTo("Retweet") = 0 then
                                 OperationsHandlerRef <! Retweet input.[1]
                             else if input.[0].CompareTo("GetMentions") = 0 then
@@ -196,8 +218,10 @@ let startSystem =
                                 OperationsHandlerRef <! HashtagRetrieve input.[1]
                             else if input.[0].CompareTo("GetSubscribedTweets") = 0 then
                                 OperationsHandlerRef <! SubscribedRetrieve input.[1]
-                            // printfn "This is the message from client %s" msg
-                            // printfn "This is the users map %A" users
+                            
+                            // printfn "This is the mention map %A" mentions
+                            // printfn "This is the hashtags map %A" hashTags
+                            // printfn "This is the usertweets map %A" userTweet
                             // printfn "This is the followers of a particular user map %A" followers
                          //   printfn "done"
                             
