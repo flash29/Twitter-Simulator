@@ -28,9 +28,9 @@ let Configuration = ConfigurationFactory.ParseString(
 let system = ActorSystem.Create("Client", Configuration)
 
 let server = system.ActorSelection(address)
-let nodes = 40000
+let nodes = 10
 let rand = System.Random()
-let numRequests = 100000
+let numRequests = 10
 
 type MainControl =
     | Init
@@ -138,7 +138,7 @@ let MainControl (mailbox: Actor<_>) =
                         let mutable tempHash = rand.Next()
                         tempHash <- tempHash % hashTagsUsed.Length
                         let userMentioned = "User" + (string (rand.Next()% nodes))
-                        tweetGenerated <- userMentioned + "-This is awesome-" + hashTagsUsed.Item(tempHash)
+                        tweetGenerated <- userMentioned + "/This is awesome/" + hashTagsUsed.Item(tempHash)
                       //  printfn "from temp %s" tweetGenerated
                         Nodelist.[x] <! SendingTweets tweetGenerated
                     stopWatch.Stop()
