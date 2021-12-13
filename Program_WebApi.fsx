@@ -11,6 +11,7 @@ open System.IO
 open Suave.Json
 open System.Text.Json
 open FSharp.Json
+open Suave.RequestErrors
 
 
 // let greetings q =
@@ -34,6 +35,10 @@ open FSharp.Json
 
 //list of all the users along with their passwords 
 //Key: username value:password
+
+
+let rand = System.Random()
+
 let mutable users = Map.empty
 
 type UserReg = {
@@ -41,18 +46,12 @@ type UserReg = {
     password : string
 }
 
-let rand = System.Random()
-
-
 let registeringUsers (userinfo :UserReg) =
     printfn "Here is the registrstion Request %A" userinfo
     users <- users.Add(userinfo.name, userinfo.password)
     printfn "here is the list of users %A" users
     userinfo
 
-let sayHi (userdata :UserReg) =
-    printfn "hello new user %s" userdata.name
-    userdata
 
 let AddingUser =
     request (
@@ -64,8 +63,74 @@ let AddingUser =
         |>Json.serialize
         |>OK
         )
-       
-         
+
+// keeping track of users who are logging in and who are logging out
+let mutable logStatus = Map.empty
+
+let UpdateLogIn (userinfo: UserReg)=
+    let tempPass = users.TryFind userinfo.name
+    printfn "the value of temppass is %s" tempPass.Value 
+    printfn "Here is the login Request %A" userinfo
+    let mutable response = 200
+    if tempPass.Value = userinfo.password then
+      logStatus <- logStatus.Add(userinfo.name, "LoggedIN")
+    else
+      response <- 404
+    printfn "here is the list of users %A" logStatus
+    response, userinfo
+
+type UserLogOut = {
+    name : string
+}
+
+let UpdateLogOut (userinfo: UserLogOut)=
+    let tempPass = logStatus.TryFind userinfo.name
+    printfn "the value of tempStatus is %s" tempPass.Value 
+    printfn "Here is the login Request %A" userinfo
+    let mutable response = 200
+    if tempPass.Value = "LoggedIN" then
+      logStatus <- logStatus.Add(userinfo.name, "LoggedOUT")
+    else
+      response <- 404
+    printfn "here is the list of users %A" logStatus
+    response, userinfo
+    
+
+let LoggingInUser =
+    request (
+        fun r ->
+        let resp, userin =r.rawForm
+                          |>System.Text.Encoding.UTF8.GetString
+                          |>Json.deserialize<UserReg>
+                          |>UpdateLogIn
+                  
+        if resp = 200 then
+            userin
+              |>Json.serialize
+              |>OK
+        else 
+           userin
+              |>Json.serialize
+              |>BAD_REQUEST 
+        )      
+
+let LoggingOutUser =
+    request (
+        fun r ->
+        let resp, userin =r.rawForm
+                          |>System.Text.Encoding.UTF8.GetString
+                          |>Json.deserialize<UserLogOut>
+                          |>UpdateLogOut
+                  
+        if resp = 200 then
+            userin
+              |>Json.serialize
+              |>OK
+        else 
+           userin
+              |>Json.serialize
+              |>BAD_REQUEST 
+        )         
 
 let app =
   choose
@@ -74,12 +139,18 @@ let app =
           path "/goodbye" >=> OK "Good bye GET" ]
       POST >=> choose
         [ path "/userregistration" >=> AddingUser
+          path "/logging" >=>  LoggingInUser
+          path "/logout" >=>  LoggingOutUser
           path "/goodbye" >=> OK "Good bye POST" ] ]
 
 
 
 startWebServer defaultConfig app
 
+// let isFound number elem = elem = number 
+// let inp = ['a';'b';'c']
+// let result = inp |> List.findIndex (isFound 'c')
+// printfn "Here the result is : %d" result
 
 // let app : WebPart =
 //   choose [
