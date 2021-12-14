@@ -116,7 +116,7 @@ let SocketProccesser (mailbox: Actor<_>) =
                     }
                     Async.StartAsTask res |> ignore
                 | FollowingUpdates (username, username_1, ws) ->
-                    let usernameAndTweet = username + "-" + username_1
+                    let usernameAndTweet = username_1 + "Started Following" + username
                     let byteResponse =
                       usernameAndTweet
                       |> System.Text.Encoding.ASCII.GetBytes
@@ -232,16 +232,29 @@ let mutable hashTags = Map.empty
 //This map followers is of the form key:username value is alist of al the users who follow the user
 let mutable followers = Map.empty
 
+//************************ Adding Followers ***********************************
+
+//here username is being followed by username2
+type following = {
+    username : string
+    username2 : string
+}
 //here username2 is following username
-let followersAddition username username2 = 
-    let found = followers.TryFind username
+let followersAddition (info:following) = 
+    let found = followers.TryFind info.username
+    let mutable response = 200
+    let soc = socketMaps.TryFind info.username
+    SocketProccesserRef <! FollowingUpdates (info.username, info.username2, soc.Value)
     if found = None then
         let FList = new List<string>()
-        FList.Add(username2)
-        followers <- followers.Add(username, FList)
+        FList.Add(info.username2)
+        followers <- followers.Add(info.username, FList)
     else
-        found.Value.Add(username2)
+        found.Value.Add(info.username2)
+    response, info
+    
 
+//********************** Tweet Additions ***************************************
 let addSpecificUserTweets username tweet = 
     let found = userTweets.TryFind username
     if found = None then
@@ -268,6 +281,7 @@ let addHashtag hashtag tweet =
         hashTags <- hashTags.Add(hashtag, FList)
     else
         found.Value.Add(tweet)
+    printfn "the map of hashtags is %A" hashTags
 
 let parsingTweets (name:string)(tweet:string) =
     let t = tweet.Split ' '
@@ -294,7 +308,7 @@ let SendingTweetsToFollowers username tweet =
           let tempLog = logStatus.TryFind user
           if tempLog.Value = "LoggedIN" then
             let soc = socketMaps.TryFind user
-            SocketProccesserRef <! SendFollowingTweets(user, soc.Value, tweet)
+            SocketProccesserRef <! SendFollowingTweets(username, soc.Value, tweet)
 
 type TweetProccesser =
     | SpecificTweets of string*string
@@ -324,7 +338,8 @@ let TweetAddition (userinfo: tweets)=
     let tempLog = logStatus.TryFind userinfo.name
     if tempLog.Value = "LoggedIN" then
       let soc = socketMaps.TryFind userinfo.name
-      SocketProccesserRef <! OwnTweet (userinfo.tweetContent, soc.Value)
+      if soc <> None then
+        SocketProccesserRef <! OwnTweet (userinfo.tweetContent, soc.Value)
       TweetProccesserRef <! SpecificTweets (userinfo.name, userinfo.tweetContent)
       TweetProccesserRef <! ParsingWorker (userinfo.name, userinfo.tweetContent)
       TweetProccesserRef <! SendTweetsToFollowers(userinfo.name, userinfo.tweetContent)
@@ -351,7 +366,70 @@ let TweetAccepter =
               |>BAD_REQUEST 
         ) 
 
-//**********************Socket Connection********************** 
+//******************* Followers Accepter and proccessors ********************************
+
+let FollowerAccepter =
+    request (
+        fun r ->
+        let resp, userin =r.rawForm
+                          |>System.Text.Encoding.UTF8.GetString
+                          |>Json.deserialize<following>
+                          |>followersAddition
+                  
+        if resp = 200 then
+            userin
+              |>Json.serialize
+              |>OK
+        else 
+           userin
+              |>Json.serialize
+              |>BAD_REQUEST 
+        ) 
+
+//******************************* HashTags *****************************
+type HashTagsType ={
+  hash :string
+}
+
+let HashTagGetter (req: HashTagsType)= 
+    printfn "the request for retrieving hashtags is : %A " req
+    let mutable response = 200
+    let tempHash = req.hash.[1..]
+    let tempLog = hashTags.TryFind tempHash
+    let mutable FList = new List<string>()
+    let mutable tweetMap = Map.empty
+    if tempLog <> None then
+      let mutable counter = 0
+      FList <- tempLog.Value
+      for i in tempLog.Value do
+        counter <- counter + 1
+        tweetMap <-tweetMap.Add((string)counter,i)
+      printfn "the value of FList in hashtags is: %A " FList
+      printfn "After iterations this is tweetMap: %A " tweetMap
+    else
+      response <- 404
+    response, tweetMap
+
+let HashTagRequester =
+    request (
+        fun r ->
+        let resp, userin =r.rawForm
+                          |>System.Text.Encoding.UTF8.GetString
+                          |>Json.deserialize<HashTagsType>
+                          |>HashTagGetter
+                  
+        if resp = 200 then
+            userin
+              |>Json.serialize
+              |>OK
+        else 
+           userin
+              |>Json.serialize
+              |>BAD_REQUEST 
+        ) 
+
+
+//********************** Socket Connection********************** 
 
 
         
@@ -395,13 +473,15 @@ let app =
   choose
     [ path "/websocket" >=> handShake ws
       GET >=> choose
-        [ path "/userinfo" >=> OK "info sent" 
+        [ 
+          path "/hashtags" >=> HashTagRequester 
         ]
       POST >=> choose
         [ path "/userregistration" >=> AddingUser
           path "/logging" >=>  LoggingInUser
           path "/logout" >=>  LoggingOutUser
           path "/sendtweets" >=> TweetAccepter
+          path "/following" >=> FollowerAccepter
         ] 
     ]
 
