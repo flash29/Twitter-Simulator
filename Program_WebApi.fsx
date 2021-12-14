@@ -141,7 +141,7 @@ let SocketProccesser (mailbox: Actor<_>) =
             }
     loop()
 
-let SocketProccesserRef = spawn system "Creater" SocketProccesser
+let SocketProccesserRef = spawn system "SocketCreater" SocketProccesser
 
 
 // ************ LOGGING IN AND LOGGING OUT ********************
@@ -272,13 +272,14 @@ let addHashtag hashtag tweet =
 let parsingTweets (name:string)(tweet:string) =
     let t = tweet.Split ' '
     for str in t do
-      printfn "the val is %s" str
+     // printfn "the val is %s" str
       if str.StartsWith("@") then
         let attherate = str.[1..]
         addMentions attherate tweet
-        let tempsoc = socketMaps.TryFind name
-        SocketProccesserRef <! MentioningUpdates(name, tweet, tempsoc.Value)
-        printfn "the string in @ is %s" attherate
+        let tempsoc = socketMaps.TryFind attherate
+        if tempsoc<>None then
+          SocketProccesserRef <! MentioningUpdates(name, tweet, tempsoc.Value)
+          printfn "the string in @ is %s" attherate
       if str.StartsWith("#") then
         let attherate = str.[1..]
         addHashtag attherate tweet
