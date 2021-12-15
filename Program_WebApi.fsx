@@ -555,7 +555,6 @@ let app =
       GET >=> choose
         [ 
           pathScan "/hashtags/%s" (fun hashtag -> (HashTagRequester hashtag) ) 
-          pathScan "/LogInTweets/%s" (fun username -> (getTweetsAfterLogIN username) ) 
         ]
       POST >=> choose
         [ path "/userregistration" >=> AddingUser
