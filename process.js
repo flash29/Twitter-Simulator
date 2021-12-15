@@ -15,11 +15,17 @@ let logOutClick = document.getElementById("logoutButton");
 let wsUri = "ws://127.0.0.1:8080/websocket";
 let output = document.getElementById("socketFeed");
 let output2 = document.getElementById("hashFeed");
+let output3 = document.getElementById("status");
 
 let usernameG;
 
 function onTopWrite(message){
     console.log("Here the message is:"+ message);
+    output3.removeChild(output3.firstChild);
+    var pre = document.createElement("p"); 
+    pre.id = "statusContent"; 
+    pre.innerHTML = message; 
+    output3.appendChild(pre);
 }
 
 function writeToGet(message){
@@ -45,6 +51,7 @@ logOutClick.addEventListener("click", ()=>{
         console.log(response);
         if(response.ok){
             onTopWrite("Logged Out Successfully");
+            location.reload();
         }
         else{
           onTopWrite("Can't logout as user is not logged in");
@@ -149,6 +156,8 @@ tweetClick.addEventListener("click", ()=>{
         
       }).then(response => {
           console.log(response);
+      }).catch(err=>{
+        onTopWrite("Can't Tweet user not loggedin");
       });
       
 });
@@ -250,7 +259,7 @@ function testWebSocket() {
      let a = evt.data;
      let b = a.split("-");
      if (b.length>1){
-        let divb = "<p id='username'>" + b[0]+ " Says "+"\t"+"</p>";
+        let divb = "<p id='username'>" + b[0]+ " Tweets "+"\t"+"</p>";
          let divT = "<p id='userTweet'>" + b[1]+"</p>";
          writeToScreen('<div id = "TweetStyle">' + divb + divT +'</div>'); 
      }
@@ -281,29 +290,3 @@ function testWebSocket() {
    
  }
 
- function getLatestTweets(){
-    fetch('http://127.0.0.1:8080/LogInTweets/'+usernameG, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json;charset=utf-8'
-        },
-      }).then(response => {
-        console.log(response);
-        if(response.ok){
-            onTopWrite("Getting tweets after logging in successful");
-        }
-        else{
-          onTopWrite("Can't get tweets. Something is wrong");
-        }
-         return response.json()
-        
-      }).then(response => {
-          console.log(response);
-        //   for (let key in response) {
-        //     if (response.hasOwnProperty(key)) {
-        //         console.log(key + " -> " + response[key]);
-        //         writeToGet(response[key]);
-        //     }
-        // }
-      });
- }

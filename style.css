@@ -34,3 +34,13 @@ button:hover{
     display: flex;
     
 }
+#StatusBar{
+    display: flex;
+}
+
+#status{
+    padding-left: 10px;
+}
+#userTweet{
+    padding-left: 10px;
+}

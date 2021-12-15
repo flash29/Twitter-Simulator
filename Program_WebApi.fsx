@@ -489,14 +489,15 @@ let getTweetsToLoggedInUser username =
     let temp = FList.Value
     for user in temp do
       let uTweets = userTweets.TryFind user
-      for twee in uTweets.Value do
-        SocketProccesserRef <! SendFollowingTweets (user, soc.Value, twee )
+      if uTweets<>None then
+        for twee in uTweets.Value do
+          SocketProccesserRef <! SendFollowingTweets (user, soc.Value, twee )
   let nFlist = mentions.TryFind username
   if nFlist <> None then
     let t2 = nFlist.Value
     for twee in t2 do
       SocketProccesserRef <! MentioningUpdatesLogIn ( soc.Value, twee )
-  username
+
 
 let getTweetsAfterLogIN username=
         getTweetsToLoggedInUser username 
@@ -523,6 +524,7 @@ let ws (webSocket : WebSocket) (context: HttpContext) =
                 let tempstr = str.Split "-"
                 printfn "username found is :%s" tempstr.[1]
                 socketMaps <- socketMaps.Add(tempstr.[1], webSocket)
+                getTweetsToLoggedInUser tempstr.[1]
                 printfn "here is the list of users %A" socketMaps
               else
                 let response = sprintf "response to %s" str
