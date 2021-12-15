@@ -103,6 +103,7 @@ type SocketProccesser =
     | OwnTweet of string*WebSocket
     | FollowingUpdates of string*string*WebSocket
     | MentioningUpdates of string*string*WebSocket
+    | MentioningUpdatesLogIn of WebSocket*string
 
 let SocketProccesser (mailbox: Actor<_>) =
     
@@ -149,13 +150,24 @@ let SocketProccesser (mailbox: Actor<_>) =
                       do! ws.send Text byteResponse true
                     }
                     Async.StartAsTask res |> ignore
-
+                | MentioningUpdatesLogIn (ws, tweet) ->
+                    let usernameAndTweet =    "  you were mentioned in a tweet: " + tweet
+                    let byteResponse =
+                      usernameAndTweet
+                      |> System.Text.Encoding.ASCII.GetBytes
+                      |> ByteSegment  
+                    let res = socket{
+                      do! ws.send Text byteResponse true
+                    }
+                    Async.StartAsTask res |> ignore
 
                 return! loop()
             }
     loop()
 
 let SocketProccesserRef = spawn system "SocketCreater" SocketProccesser
+
+
 
 
 // ************ LOGGING IN AND LOGGING OUT ********************
@@ -170,6 +182,7 @@ let UpdateLogIn (userinfo: UserReg)=
     let mutable response = 200
     if tempPass<>None && tempPass.Value = userinfo.password then
       logStatus <- logStatus.Add(userinfo.name, "LoggedIN")
+     // getTweetsToLoggedInUser userinfo.name
     else
       response <- 404
     printfn "here is the list of users %A" logStatus
@@ -250,6 +263,8 @@ let mutable hashTags = Map.empty
 //This map followers is of the form key:username value is alist of al the users who follow the user
 let mutable followers = Map.empty
 
+let mutable following = Map.empty
+
 //************************ Adding Followers ***********************************
 
 //here username is being followed by username2
@@ -258,12 +273,28 @@ type following = {
     username2 : string
 }
 //here username2 is following username
+
+let followersAdditionReverse (info:following) = 
+    let found = following.TryFind info.username2
+    if found = None then
+        let FList = new List<string>()
+        FList.Add(info.username)
+        following <- following.Add(info.username2, FList)
+    else
+        found.Value.Add(info.username)
+
 let followersAddition (info:following) = 
     let found = followers.TryFind info.username
     let mutable response = 200
+    followersAdditionReverse info
     let soc = socketMaps.TryFind info.username
+    let soc2 = socketMaps.TryFind info.username2
     if soc <> None then
      SocketProccesserRef <! FollowingUpdates (info.username, info.username2, soc.Value)
+     let flist = userTweets.TryFind info.username
+     if flist<>None then
+      for twee in flist.Value do
+        SocketProccesserRef <! SendFollowingTweets (info.username, soc2.Value, twee)
     else 
       response <- 400
     if found = None then
@@ -449,7 +480,30 @@ let HashTagRequester hash=
         //       |>BAD_REQUEST 
         >=> setMimeType "application/json"
         >=> setCORSHeaders 
+//*********************** After Login **************************
 
+let getTweetsToLoggedInUser username =
+  let FList = following.TryFind username
+  let soc = socketMaps.TryFind username
+  if FList <> None then
+    let temp = FList.Value
+    for user in temp do
+      let uTweets = userTweets.TryFind user
+      for twee in uTweets.Value do
+        SocketProccesserRef <! SendFollowingTweets (user, soc.Value, twee )
+  let nFlist = mentions.TryFind username
+  if nFlist <> None then
+    let t2 = nFlist.Value
+    for twee in t2 do
+      SocketProccesserRef <! MentioningUpdatesLogIn ( soc.Value, twee )
+  username
+
+let getTweetsAfterLogIN username=
+        getTweetsToLoggedInUser username 
+        |>Json.serialize
+        |>OK        
+        >=> setMimeType "application/json"
+        >=> setCORSHeaders 
 
 //********************** Socket Connection********************** 
 
@@ -499,6 +553,7 @@ let app =
       GET >=> choose
         [ 
           pathScan "/hashtags/%s" (fun hashtag -> (HashTagRequester hashtag) ) 
+          pathScan "/LogInTweets/%s" (fun username -> (getTweetsAfterLogIN username) ) 
         ]
       POST >=> choose
         [ path "/userregistration" >=> AddingUser
