@@ -27,6 +27,7 @@ open System.Data
 open System.Collections.Generic
 open System.Text
 open System.Diagnostics
+open Suave.Writers
 
 
 // let greetings q =
@@ -55,7 +56,18 @@ let rand = System.Random()
 
 let mutable socketMaps = Map.empty
 
+let setCORSHeaders =
+    setHeader  "Access-Control-Allow-Origin" "*"
+    >=> setHeader "Access-Control-Allow-Headers" "content-type"
 
+let allow_cors : WebPart =
+    choose [
+        OPTIONS >=>
+            fun context ->
+                context |> (
+                    setCORSHeaders
+                    >=> OK "CORS approved" )
+    ]
 // ************** Registring users *****************
 
 //list of all the users along with their passwords 
@@ -83,12 +95,15 @@ let AddingUser =
         |>Json.serialize
         |>OK
         )
+        >=> setMimeType "application/json"
+        >=> setCORSHeaders
 
 type SocketProccesser =
     | SendFollowingTweets of string*WebSocket*string
     | OwnTweet of string*WebSocket
     | FollowingUpdates of string*string*WebSocket
     | MentioningUpdates of string*string*WebSocket
+    | MentioningUpdatesLogIn of WebSocket*string
 
 let SocketProccesser (mailbox: Actor<_>) =
     
@@ -116,7 +131,7 @@ let SocketProccesser (mailbox: Actor<_>) =
                     }
                     Async.StartAsTask res |> ignore
                 | FollowingUpdates (username, username_1, ws) ->
-                    let usernameAndTweet = username_1 + "Started Following" + username
+                    let usernameAndTweet = username_1 + " Started Following you" 
                     let byteResponse =
                       usernameAndTweet
                       |> System.Text.Encoding.ASCII.GetBytes
@@ -126,7 +141,17 @@ let SocketProccesser (mailbox: Actor<_>) =
                     }
                     Async.StartAsTask res |> ignore
                 | MentioningUpdates (username, tweet, ws)->
-                    let usernameAndTweet = username + "-" + tweet
+                    let usernameAndTweet =  username + " Mentioned you in a tweet " + tweet
+                    let byteResponse =
+                      usernameAndTweet
+                      |> System.Text.Encoding.ASCII.GetBytes
+                      |> ByteSegment  
+                    let res = socket{
+                      do! ws.send Text byteResponse true
+                    }
+                    Async.StartAsTask res |> ignore
+                | MentioningUpdatesLogIn (ws, tweet) ->
+                    let usernameAndTweet =    "  you were mentioned in a tweet: " + tweet
                     let byteResponse =
                       usernameAndTweet
                       |> System.Text.Encoding.ASCII.GetBytes
@@ -136,12 +161,13 @@ let SocketProccesser (mailbox: Actor<_>) =
                     }
                     Async.StartAsTask res |> ignore
 
-
                 return! loop()
             }
     loop()
 
 let SocketProccesserRef = spawn system "SocketCreater" SocketProccesser
+
+
 
 
 // ************ LOGGING IN AND LOGGING OUT ********************
@@ -151,11 +177,12 @@ let mutable logStatus = Map.empty
 
 let UpdateLogIn (userinfo: UserReg)=
     let tempPass = users.TryFind userinfo.name
-    printfn "the value of temppass is %s" tempPass.Value 
-    printfn "Here is the login Request %A" userinfo
+  //  printfn "the value of temppass is %s" tempPass.Value 
+  //  printfn "Here is the login Request %A" userinfo
     let mutable response = 200
-    if tempPass.Value = userinfo.password then
+    if tempPass<>None && tempPass.Value = userinfo.password then
       logStatus <- logStatus.Add(userinfo.name, "LoggedIN")
+     // getTweetsToLoggedInUser userinfo.name
     else
       response <- 404
     printfn "here is the list of users %A" logStatus
@@ -194,7 +221,9 @@ let LoggingInUser =
            userin
               |>Json.serialize
               |>BAD_REQUEST 
-        )      
+        )  
+        >=> setMimeType "application/json"
+        >=> setCORSHeaders    
 
 let LoggingOutUser =
     request (
@@ -212,7 +241,9 @@ let LoggingOutUser =
            userin
               |>Json.serialize
               |>BAD_REQUEST 
-        )         
+        )  
+        >=> setMimeType "application/json"
+        >=> setCORSHeaders       
 
 //*********************** Tweet Accepting and parsing *************************************
 
@@ -232,6 +263,8 @@ let mutable hashTags = Map.empty
 //This map followers is of the form key:username value is alist of al the users who follow the user
 let mutable followers = Map.empty
 
+let mutable following = Map.empty
+
 //************************ Adding Followers ***********************************
 
 //here username is being followed by username2
@@ -240,11 +273,30 @@ type following = {
     username2 : string
 }
 //here username2 is following username
+
+let followersAdditionReverse (info:following) = 
+    let found = following.TryFind info.username2
+    if found = None then
+        let FList = new List<string>()
+        FList.Add(info.username)
+        following <- following.Add(info.username2, FList)
+    else
+        found.Value.Add(info.username)
+
 let followersAddition (info:following) = 
     let found = followers.TryFind info.username
     let mutable response = 200
+    followersAdditionReverse info
     let soc = socketMaps.TryFind info.username
-    SocketProccesserRef <! FollowingUpdates (info.username, info.username2, soc.Value)
+    let soc2 = socketMaps.TryFind info.username2
+    if soc <> None then
+     SocketProccesserRef <! FollowingUpdates (info.username, info.username2, soc.Value)
+     let flist = userTweets.TryFind info.username
+     if flist<>None then
+      for twee in flist.Value do
+        SocketProccesserRef <! SendFollowingTweets (info.username, soc2.Value, twee)
+    else 
+      response <- 400
     if found = None then
         let FList = new List<string>()
         FList.Add(info.username2)
@@ -365,6 +417,8 @@ let TweetAccepter =
               |>Json.serialize
               |>BAD_REQUEST 
         ) 
+        >=> setMimeType "application/json"
+        >=> setCORSHeaders
 
 //******************* Followers Accepter and proccessors ********************************
 
@@ -385,16 +439,18 @@ let FollowerAccepter =
               |>Json.serialize
               |>BAD_REQUEST 
         ) 
+        >=> setMimeType "application/json"
+        >=> setCORSHeaders
 
 //******************************* HashTags *****************************
 type HashTagsType ={
   hash :string
 }
 
-let HashTagGetter (req: HashTagsType)= 
-    printfn "the request for retrieving hashtags is : %A " req
+let HashTagGetter hash = 
+    printfn "the request for retrieving hashtags is : %s " hash
     let mutable response = 200
-    let tempHash = req.hash.[1..]
+    let tempHash = hash.[1..]
     let tempLog = hashTags.TryFind tempHash
     let mutable FList = new List<string>()
     let mutable tweetMap = Map.empty
@@ -408,26 +464,47 @@ let HashTagGetter (req: HashTagsType)=
       printfn "After iterations this is tweetMap: %A " tweetMap
     else
       response <- 404
-    response, tweetMap
+    tweetMap
 
-let HashTagRequester =
-    request (
-        fun r ->
-        let resp, userin =r.rawForm
-                          |>System.Text.Encoding.UTF8.GetString
-                          |>Json.deserialize<HashTagsType>
-                          |>HashTagGetter
-                  
-        if resp = 200 then
-            userin
-              |>Json.serialize
-              |>OK
-        else 
-           userin
-              |>Json.serialize
-              |>BAD_REQUEST 
-        ) 
+let HashTagRequester hash=
+        HashTagGetter hash 
+        |>Json.serialize
+        |>OK        
+        // if resp = 200 then
+        //     userin
+        //       |>Json.serialize
+        //       |>OK
+        // else 
+        //    userin
+        //       |>Json.serialize
+        //       |>BAD_REQUEST 
+        >=> setMimeType "application/json"
+        >=> setCORSHeaders 
+//*********************** After Login **************************
 
+let getTweetsToLoggedInUser username =
+  let FList = following.TryFind username
+  let soc = socketMaps.TryFind username
+  if FList <> None then
+    let temp = FList.Value
+    for user in temp do
+      let uTweets = userTweets.TryFind user
+      if uTweets<>None then
+        for twee in uTweets.Value do
+          SocketProccesserRef <! SendFollowingTweets (user, soc.Value, twee )
+  let nFlist = mentions.TryFind username
+  if nFlist <> None then
+    let t2 = nFlist.Value
+    for twee in t2 do
+      SocketProccesserRef <! MentioningUpdatesLogIn ( soc.Value, twee )
+
+
+let getTweetsAfterLogIN username=
+        getTweetsToLoggedInUser username 
+        |>Json.serialize
+        |>OK        
+        >=> setMimeType "application/json"
+        >=> setCORSHeaders 
 
 //********************** Socket Connection********************** 
 
@@ -447,6 +524,7 @@ let ws (webSocket : WebSocket) (context: HttpContext) =
                 let tempstr = str.Split "-"
                 printfn "username found is :%s" tempstr.[1]
                 socketMaps <- socketMaps.Add(tempstr.[1], webSocket)
+                getTweetsToLoggedInUser tempstr.[1]
                 printfn "here is the list of users %A" socketMaps
               else
                 let response = sprintf "response to %s" str
@@ -471,10 +549,12 @@ let ws (webSocket : WebSocket) (context: HttpContext) =
 
 let app =
   choose
-    [ path "/websocket" >=> handShake ws
+    [ 
+      path "/websocket" >=> handShake ws
+      allow_cors
       GET >=> choose
         [ 
-          path "/hashtags" >=> HashTagRequester 
+          pathScan "/hashtags/%s" (fun hashtag -> (HashTagRequester hashtag) ) 
         ]
       POST >=> choose
         [ path "/userregistration" >=> AddingUser
