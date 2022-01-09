@@ -29,30 +29,8 @@ open System.Text
 open System.Diagnostics
 open Suave.Writers
 
-
-// let greetings q =
-//   defaultArg (Option.ofChoice (q ^^ "name")) "World" |> sprintf "Hello %s"
-
-// let sample : WebPart = 
-//     path "/hello" >=> choose [
-//       GET  >=> request (fun r -> OK (greetings r.query))
-//       POST >=> request (fun r -> OK (greetings r.form))
-//       RequestErrors.NOT_FOUND "Found no handlers" ]
-
-// let mutable newT = ""
-// let mutable result = ""
-
-// let infoCheck q =
-//     // newT <- Json.mapJsonWith Json.fromJson UTF8.bytes q
-//     let a =defaultArg (Option.ofChoice (q ^^ "nameOfuser")) "Not Found" 
-//     if a <> "Not Found" then
-//         result <- a
-//     result
-
-
 let system = ActorSystem.Create("TwitterServerEngine")
 
-let rand = System.Random()
 
 let mutable socketMaps = Map.empty
 
@@ -141,7 +119,7 @@ let SocketProccesser (mailbox: Actor<_>) =
                     }
                     Async.StartAsTask res |> ignore
                 | MentioningUpdates (username, tweet, ws)->
-                    let usernameAndTweet =  username + " Mentioned you in a tweet " + tweet
+                    let usernameAndTweet =  username + "Mentioned you in a tweet : " + tweet
                     let byteResponse =
                       usernameAndTweet
                       |> System.Text.Encoding.ASCII.GetBytes
@@ -506,9 +484,8 @@ let getTweetsAfterLogIN username=
         >=> setMimeType "application/json"
         >=> setCORSHeaders 
 
-//********************** Socket Connection********************** 
 
-
+//********************** Socket Connection **********************
         
 let ws (webSocket : WebSocket) (context: HttpContext) =
     socket {
@@ -543,7 +520,7 @@ let ws (webSocket : WebSocket) (context: HttpContext) =
 
           | _ -> ()
     }
-
+//********************** End of Socket Connection ********************** 
 
 //******************** Routing ****************************
 
@@ -565,31 +542,10 @@ let app =
         ] 
     ]
 
+//******************** End of Routing ****************************
+
+//******************** Starting the server ****************************
+
 startWebServer defaultConfig app
 
-
-//let s = "@rj how are you #CL"
-// let t = s.Split ' '
-// for str in t do
-//   printfn "the val is %s" str
-//   if str.StartsWith("@") then
-//     let attherate = str.[1..]
-//     printfn "the string in @ is %s" attherate
-//   if str.StartsWith("#") then
-//     let attherate = str.[1..]
-//     printfn "the string in # is %s" attherate
-// let isFound number elem = elem = number 
-// let inp = ['a';'b';'c']
-// let result = inp |> List.findIndex (isFound 'c')
-// printfn "Here the result is : %d" result
-
-// let app : WebPart =
-//   choose [
-//     GET >=> path "/home" >=> Files.file "index.html"
-//     GET >=> Files.browseHome
-//     RequestErrors.NOT_FOUND "Page not found." 
-//   ]
-// let config =
-//   { defaultConfig with homeFolder = Some (Path.GetFullPath "./public/") }
-
-// startWebServer config app
+//******************** End of Code ****************************

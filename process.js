@@ -137,8 +137,8 @@ tweetClick.addEventListener("click", ()=>{
         name : usernameG,
         tweetContent : tweet
     };
-
-    fetch('http://127.0.0.1:8080/sendtweets', {
+    if (usernameG){
+        fetch('http://127.0.0.1:8080/sendtweets', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json;charset=utf-8'
@@ -159,6 +159,12 @@ tweetClick.addEventListener("click", ()=>{
       }).catch(err=>{
         onTopWrite("Can't Tweet user not loggedin");
       });
+    }
+    else{
+        onTopWrite("Can't Tweet user not loggedin");
+    }
+
+    
       
 });
 
@@ -233,6 +239,8 @@ RegClick.addEventListener("click", ()=>{
    
 });
 
+
+// wsUri = "ws://127.0.0.1:8080/websocket";
 function testWebSocket() {
     websocket = new WebSocket(wsUri);
        
@@ -286,7 +294,5 @@ function testWebSocket() {
     var pre = document.createElement("p"); 
     pre.id = "TweetColors"; 
     pre.innerHTML = message; 
-    output.appendChild(pre);
-   
+    output.appendChild(pre); 
  }
-
